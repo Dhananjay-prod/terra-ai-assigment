@@ -4,7 +4,7 @@ from collections import defaultdict
 import google.generativeai as genai
 import asyncio
 
-client = genai.configure(api_key="AIzaSyCafgtrf9ICUnxRWoc9SrKkb9YQquF7wH8")
+client = genai.configure(api_key="api-key")
 model = genai.GenerativeModel("gemini-2.0-flash")
 
 with open("players.json", "r") as f:
@@ -124,3 +124,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())  
+

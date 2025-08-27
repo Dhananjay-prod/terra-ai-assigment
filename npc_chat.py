@@ -1,96 +1,126 @@
 import json
 from datetime import datetime
 from collections import defaultdict
-from groq import Groq
-client = Groq(api_key="key")
+import google.generativeai as genai
+import asyncio
+
+client = genai.configure(api_key="AIzaSyCafgtrf9ICUnxRWoc9SrKkb9YQquF7wH8")
+model = genai.GenerativeModel("gemini-2.0-flash")
 
 with open("players.json", "r") as f:
     messages = json.load(f)
+
 messages.sort(key=lambda m: datetime.fromisoformat(m["timestamp"])) 
-"""
-check
-for x in messages[:5]:
-    print(x)
-"""
-player_state = defaultdict(lambda: {"messages": [], "npc_mood": "neutral"})
-def update_mood(message: str, current_mood: str):
-    text = message.lower()
-    angry_words = ["stupid", "hate", "boring", "useless","first!","it!","time","day","hogging","slow","wasting"]
-    if any(word in text for word in angry_words):
-        return "angry"
-    friendly_words = ["help", "please", "thanks", "hello", "hi","appreciate","invaluable","safe","experience","helpful","appreciated"]
-    if any(word in text for word in friendly_words):
-        return "friendly"
-    return current_mood
 
-for msg in messages:
-    pid = msg["player_id"]  
-    text = msg["text"]
+player_state = defaultdict(lambda: {
+    "messages": [], 
+    "npc_mood": "neutral", 
+    "player_mood": "neutral",
+    "conversation_history": [],
+    "interaction_count": 0
+})
 
-    player_state[pid]["messages"].append(text)
-    player_state[pid]["messages"] = player_state[pid]["messages"][-3:] 
-    player_state[pid]["npc_mood"] = update_mood(text,player_state[pid]["npc_mood"])
+async def detect_mood_and_generate_response(player_id, message, player_data):
+    
+    last_messages = player_data["messages"]
+    current_npc_mood = player_data["npc_mood"]
+    
+    # Build conversation context
+    conversation_context = ""
+    if len(last_messages) > 1:
+        conversation_context = "\nPrevious conversation:\n" + "\n".join([
+            f"Player: {msg}" for msg in last_messages[:-1]
+        ])
+    
+    prompt = f"""You are a village NPC in a medieval fantasy RPG. Do two things:
 
-def generate_npc_reply(player_idx): 
-    player_id= int(player_idx)
-    if player_id not in player_state :
-        return "And just who you might be traveller?"
-    last_msgs = player_state[player_id]["messages"]
-    mood = player_state[player_id]["npc_mood"]
+1. Respond to the player's message as the NPC
+2. Determine how YOU (the NPC) feel about this player based on their behavior, their tone, and your past interactions.
 
-    print(f" Player {player_id}'s last messages: {last_msgs}, mood identified as {mood}")
+Player's message: '{message}'
+Your current mood toward this player: {current_npc_mood}
+{conversation_context}
 
-    joined_msgs = "\n".join([f"- {m}" for m in last_msgs])
+NPC mood options: friendly, angry, neutral, helpful, patient, stern, dismissive
 
-    prompt = f""" You are a NPC in a text fantasy adventure game set in a medieval world. Your personality depends on you current npc mood.
-    The player's last messages were:{joined_msgs}
-    Current NPC mood: {mood}
-    Respond as the NPC,staying character, in 2 or 3 sentences.
-    """
-    response = client.chat.completions.create(
-        model="llama3-70b-8192",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=150,
-        temperature=0.7
-    )
-    reply = response.choices[0].message.content.strip()
-    player_state[player_id]["npc_reply"] = reply
-    return reply
+Consider:
+- If player is rude/insulting → you become angry/stern
+- If player is polite/grateful → you become friendly/helpful  
+- If player apologizes after being rude → you become more neutral/forgiving
+- If player is confused → you become patient/helpful
+- Your mood should evolve based on how this player treats you
 
-"""
-check 
-if 1 in player_state:
-    print("last 3 messages:")
-    for msg in player_state[1]["messages"][-3:]:
-        print("**",msg)
-    print(player_state[1]["npc_mood"])
-else:
-    print("none")
+Response as JSON:
+{{
+    "npc_response": "Your response as the NPC in 1 sentences",
+    "npc_mood": "how_you_feel_about_this_player"
+}}
 
-#npc_text=generate_npc_reply("24")
-#print("npc:",npc_text)
-"""
+Stay in medieval NPC character (merchant, guard, elder, etc.)"""
 
-def log_interaction(player_id,npc_reply,timestamp,msg_id):
-
-    last_msgs = player_state[player_id]["messages"][-3:]
-    npc_mood = player_state[player_id]["npc_mood"]
-    message_text=last_msgs[-1]
+    try:
+        await asyncio.sleep(0.5)  # Rate limiting
+        response = await asyncio.to_thread(model.generate_content, prompt)
+        response_text = response.text.strip()
+        
+        # Simple JSON parsing
+        import re
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            response_json = json.loads(json_match.group())
+            npc_response = response_json.get("npc_response", "Greetings, traveler.")
+            npc_mood = response_json.get("npc_mood", current_npc_mood)
+            return npc_response, npc_mood
+        else:
+            return "Greetings, traveler.", current_npc_mood
+            
+    except Exception as e:
+        print(f"  AI call failed: {e}")
+        return "Greetings, traveler.", current_npc_mood
+    
+def log_interaction(player_id, message, npc_reply, player_data, timestamp):
+    """Log the interaction and write to file"""
+    
     log_entry = {
         "player_id": player_id,
-        "message_text": message_text,
+        "message_text": message,
         "npc_reply": npc_reply,
-        "state_used": last_msgs,
-        "npc_mood": npc_mood,
+        "state_used": player_data["messages"].copy(),
+        "npc_mood": player_data["npc_mood"],
         "timestamp": timestamp
     }
+    
+    with open("npc_interactions.jsonl", "a", encoding='utf-8') as f:
+        f.write(json.dumps(log_entry) + "\n")
 
-    print(json.dumps(log_entry,indent=5))
-    if True:
-        with open("logs.jsonl", "a") as f:
-            f.write(json.dumps(log_entry) + "\n") 
-x=93
-msg = messages[x]
-pid = int(msg["player_id"])
-npc_text = generate_npc_reply(pid)
-log_interaction(pid, npc_text, msg["timestamp"],msg_id=x)
+async def main():
+    # Clear log file
+    with open("npc_interactions.jsonl", "w") as f:
+        f.write("")
+    
+    # Process each message
+    for i, msg in enumerate(messages):
+        player_id = msg["player_id"]
+        message = msg["text"]
+        timestamp = msg["timestamp"]
+        
+        print(f"Processing {i+1}/{len(messages)}: Player {player_id}")
+        
+        # Get player data and update history
+        player_data = player_state[player_id]
+        player_data["messages"].append(message)
+        player_data["messages"] = player_data["messages"][-3:]
+        
+        # Single AI call for response + NPC mood
+        npc_reply, npc_mood = await detect_mood_and_generate_response(
+            player_id, message, player_data
+        )
+        
+        # Update NPC mood toward this player
+        player_data["npc_mood"] = npc_mood
+        
+        # Log interaction
+        log_interaction(player_id, message, npc_reply, player_data, timestamp)
+
+if __name__ == "__main__":
+    asyncio.run(main())  

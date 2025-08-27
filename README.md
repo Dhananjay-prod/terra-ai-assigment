@@ -1,98 +1,165 @@
-# terra-ai-assigment
-In this assignment, you’ll build a simple **AI-powered NPC chat system**.  (NPC = Non-playing character)
+# RPG NPC Interaction System
 
----
+An AI-powered NPC (Non-Player Character) system that creates dynamic, mood-aware interactions for medieval fantasy RPG games. NPCs remember past conversations and adapt their responses based on how players treat them.
 
-## 📝 Task  
+## Features
 
-Write a Python program that:  
+- **Dynamic Mood System**: NPCs develop feelings toward individual players based on their behavior
+- **Conversation Memory**: Each NPC remembers the last 3 interactions with each player
+- **Contextual Responses**: AI generates appropriate medieval fantasy responses
+- **Persistent Logging**: All interactions are logged with timestamps and mood states
+- **Async Processing**: Efficient handling of multiple player interactions
 
-1. Reads a JSON file of **100 player chat messages** (`players.json`).  
-   - Each message has:  
-     - `player_id` (integer)  
-     - `text` (string)  
-     - `timestamp` (ISO 8601 string, e.g. `"2025-08-26T15:01:10"`)  
+## Prerequisites
 
-2. For each incoming message:  
-   - Call the **OpenAI GPT API (`gpt-3.5-turbo`)** to generate a short NPC reply. (You can use any other AI model too)
-   - Maintain **conversation state per player**:  
-     - Keep the last 3 messages for each player.  
-     - Pass this state along with the current message so replies feel consistent.  
-   - Track an NPC “mood” per player that can shift over time (start as `"neutral"`, then switch to `"friendly"` or `"angry"` depending on what the player says).  
-     - Example: If the player asks for help → `"friendly"`; if the player insults the NPC → `"angry"`.  
-     - Include this mood in the prompt to GPT.  
+- Python 3.7+
+- Google AI API key (for Gemini model access)
+- Input data file: `players.json`
 
-3. Messages may arrive **out of order** (timestamps will not be sorted).  
-   - Your program should process them in **chronological order**.  
+## Installation
 
-4. Log the results (console or file):  
-   - `player_id`  
-   - message text  
-   - NPC reply  
-   - state used (last 3 messages)  
-   - NPC mood  
-   - timestamp   
+1. **Clone or download the code**
+2. **Install required libraries**:
+   ```bash
+   pip install google-generativeai
+   ```
 
----
+3. **Set up your Google AI API key**:
+   - Get an API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+   - Replace `"api key"` in the code with your actual API key
 
-## 📂 Input Example (`players.json`)  
+4. **Prepare your input data**:
+   Create a `players.json` file with the following format:
+   ```json
+   [
+     {
+       "player_id": "player_001",
+       "text": "Hello, good merchant!",
+       "timestamp": "2024-01-15T10:30:00"
+     },
+     {
+       "player_id": "player_002", 
+       "text": "You're overcharging me!",
+       "timestamp": "2024-01-15T10:31:00"
+     }
+   ]
+   ```
 
+## Quick Start
+
+1. **Prepare your data**: Ensure `players.json` exists with player messages
+2. **Run the system**:
+   ```bash
+   python npc_system.py
+   ```
+3. **Check results**: View generated interactions in `npc_interactions.jsonl`
+
+## System Workflow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Load Player   │───▶│   Sort Messages  │───▶│  Initialize NPC │
+│   Messages      │    │   by Timestamp   │    │  State Tracker  │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                                        │
+                                                        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Process Each Message                         │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Update Player  │───▶│   Build Context  │───▶│   AI Generate   │
+│  Message History│    │  (Last 3 msgs +  │    │   Response +    │
+│   (Keep Last 3) │    │   Current Mood)  │    │   Mood Update   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                                        │
+                                                        ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Log Complete  │◀───│  Update NPC Mood │◀───│  Parse AI JSON  │
+│   Interaction   │    │  Toward Player   │    │    Response     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## How It Works
+
+### 1. **Message Processing**
+- Loads and sorts player messages chronologically
+- Maintains separate conversation states for each player
+- Keeps rolling history of last 3 messages per player
+
+### 2. **Mood Evolution**
+NPCs develop attitudes based on player behavior:
+- **Rude/Insulting** → `angry`, `stern`  
+- **Polite/Grateful** → `friendly`, `helpful`
+- **Apologetic** → `neutral`, `forgiving`
+- **Confused** → `patient`, `helpful`
+
+### 3. **AI Response Generation**
+Single API call generates both:
+- Contextually appropriate NPC response (1 sentence)
+- Updated mood state toward the specific player
+
+### 4. **Persistent State**
+Each interaction is logged with:
+- Player message and NPC response
+- Mood state and conversation history
+- Timestamp for chronological tracking
+
+## Output Format
+
+The system generates `npc_interactions.jsonl` with entries like:
 ```json
-[
-  {"player_id": 1, "text": "Hello there!", "timestamp": "2025-08-26T15:01:10"},
-  {"player_id": 2, "text": "Where should I go now?", "timestamp": "2025-08-26T15:01:05"},
-  {"player_id": 1, "text": "Tell me more about this village.", "timestamp": "2025-08-26T15:01:20"},
-  {"player_id": 2, "text": "You are useless!", "timestamp": "2025-08-26T15:01:25"},
-  {"player_id": 3, "text": "Do you have a quest for me?", "timestamp": "2025-08-26T15:01:15"}
-]
+{
+  "player_id": "player_001",
+  "message_text": "Thank you for your help!",
+  "npc_reply": "You are most welcome, kind traveler!",
+  "state_used": ["Hello there", "Can you help me?", "Thank you for your help!"],
+  "npc_mood": "friendly",
+  "timestamp": "2024-01-15T10:32:00"
+}
 ```
----
 
-## Stretch Opportunities
+## Customization
 
-- If you want to, you are free to add additional flavour or improvements beyond the basics.
-- This is not required, but it’s a chance to show how you think creatively about the problem.
-
-## ✅ Baseline Expectations
-Your script should run end-to-end and:
-- Process all 100 messages in chronological order.
-- Maintain per-player state (last 3 messages).
-- Track and update a mood variable for each NPC.
-- Produce structured logs with all required fields.
-
-This is the minimum requirement for the assignment.
-
-
-## 🚀 Getting Started
-You can use **any text generation model** you prefer — commercial (OpenAI, Claude, Gemini, etc.) or open-source (LLaMA, Mistral, etc.).  
-
-Install the client library for your chosen model.  
-For example, if you use OpenAI:  
+### Modify NPC Character Types
+Edit the prompt to specify different NPC roles:
+```python
+# In the prompt, change this line:
+"Stay in medieval NPC character (merchant, guard, elder, etc.)"
+# To specific roles like:
+"You are a gruff tavern keeper" or "You are a wise village elder"
 ```
-pip install openai
+
+### Adjust Mood Categories
+Modify the mood options in the prompt:
+```python
+"NPC mood options: friendly, angry, neutral, helpful, patient, stern, dismissive"
 ```
-Place your code in npc_chat.py and run it:
 
+### Change Memory Length
+Adjust how many previous messages to remember:
+```python
+player_data["messages"] = player_data["messages"][-3:]  # Change -3 to desired length
 ```
-python npc_chat.py
+
+## Rate Limiting
+
+The system includes a 0.5-second delay between API calls to respect rate limits. Adjust if needed:
+```python
+await asyncio.sleep(0.5)  # Modify delay as needed
 ```
-## 📦 Deliverables
 
-- Submit your Python code (`npc_chat.py`).  
-- Your program should read `players.json` and output logs as described.  
-- If you used AI tools (ChatGPT, Claude, Gemini, Copilot, or open-source models) to help, please also share the **prompt chain or conversation link** you used.  
-  - If the tool supports shareable links, include the link.  
-  - If not, copy the prompts/responses into a file (`ai_prompts.txt`) and include it in your submission.  
+## Troubleshooting
 
-👉 Using AI is encouraged. We’re interested in seeing *how you think with AI*, how you structure prompts, and how you refine outputs.  
-**Please don’t claim you avoided AI use to “look better” — this does not give extra credit.**
+**API Key Issues**: Ensure your Google AI API key is valid and has quota remaining
 
-## 📤 How to Submit
+**JSON Parsing Errors**: The system includes fallback responses if AI output isn't valid JSON
 
-- Clone this repository to your own GitHub account. (create one if you haven't)
-- Add your solution (npc_chat.py and any supporting files).
-    1. Include: Your code `npc_chat.py`
-    2. Include: the output logs (sample run)
-    3. Include: Links to all chatgpt / claude / any other AI tool conversations that you used or `ai_prompts.txt`
-- Make your repository public.
-- Share the repo link to us
+**File Not Found**: Ensure `players.json` exists in the same directory as the script
+
+**Rate Limiting**: If you hit API limits, increase the sleep delay in the `detect_mood_and_generate_response` function
+
+## License
+
+This project is open source. Feel free to modify and distribute according to your needs.
